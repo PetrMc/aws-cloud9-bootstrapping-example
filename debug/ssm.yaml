@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: AWS CloudFormation template to deploy curl, eksctl, kubectl, and create EKS clusters using SSM Document.
+Resources:
+  ExampleSSMDocument:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      DocumentFormat: YAML
+      Name: ExampleSSMDocument
+      Content:
+        schemaVersion: "2.2"
+        description: "Install curl, eksctl, kubectl, and create EKS clusters"
+        mainSteps:
+        - inputs:
+            runCommand:
+            - "#!/bin/bash"
+            - "yum update -y"
+            - "yum install -y curl jq"
+            - "curl -sSL https://dl.k8s.io/release/$(curl -sSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl -o /usr/local/bin/kubectl"
+            - "chmod +x /usr/local/bin/kubectl"
+            - "echo 'Downloading eksctl...'"
+            - "curl -s --location \"https://github.com/weaveworks/eksctl/releases/download/v0.181.0/eksctl_Linux_amd64.tar.gz\" -o /tmp/eksctl_Linux_amd64.tar.gz"
+            - "echo 'Extracting eksctl...'"
+            - "tar xz -C /tmp -f /tmp/eksctl_Linux_amd64.tar.gz || { echo \"Failed to download and extract eksctl\"; exit 1; }"
+            - "wait"
+            - "mv /tmp/eksctl /usr/local/bin"
+            - "chmod +x /usr/local/bin/eksctl"
+            - "echo 'Installation of curl, eksctl, and kubectl complete'"
+            - "export AWS_REGION=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .region)"
+            - "export EKS_VERSION=1.29"
+            - "export NUMBER_NODES=3"
+            - "export NODE_TYPE='c7i.xlarge'"
+            - "export CLUSTER_NAME=solo-io-gloo-mesh-workshop-1"
+            - "eksctl create cluster --region $AWS_REGION --name $CLUSTER_NAME --nodes $NUMBER_NODES --node-type $NODE_TYPE --version=$EKS_VERSION || { echo \"Failed to create cluster solo-io-gloo-mesh-workshop-1\"; exit 1; }"
+            - "export CLUSTER_NAME=solo-io-gloo-mesh-workshop-2"
+            - "eksctl create cluster --region $AWS_REGION --name $CLUSTER_NAME --nodes $NUMBER_NODES --node-type $NODE_TYPE --version=$EKS_VERSION || { echo \"Failed to create cluster solo-io-gloo-mesh-workshop-2\"; exit 1; }"
+          name: "InstallAndDeploy"
+          action: "aws:runShellScript"
+        

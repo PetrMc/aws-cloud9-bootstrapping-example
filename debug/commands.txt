@@ -1,0 +1,91 @@
+export AWS_PROFILE=marketplace
+export AWS_REGION=us-west-1
+export OWNER_NAME=$(whoami)
+export AWS_PAGER=""
+export KEY_NAME=${OWNER_NAME}-${AWS_PROFILE}-key-pair 
+
+aws cloudformation create-stack --stack-name eksctl-ssm-stack-0 --template-body file://debug/ssm.yaml --capabilities CAPABILITY_NAMED_IAM
+
+aws cloudformation create-stack --stack-name cloud9-stack-0 --template-body file://solo_instance.yaml --capabilities CAPABILITY_NAMED_IAM
+
+export ROLE="arn:aws:iam::835335437537:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AdministratorAccess_b27dd1048daf2921"
+
+./petr_setup.sh us-west-1 marketplace 3rdParty $ROLE
+
+export INSTANCE_ID=i-0d5c3fb9d75dbed80
+export DOCUMENT_ID="SoloWorkshop-600-SoloC9InstanceDocument-UGVOmnBdWZB"
+
+aws ssm send-command \
+    --document-name "SoloWorkshop-600-SoloC9InstanceDocument-UGVOmnBdWZBN" \
+    --targets "Key=instanceIds,Values=${INSTANCE_ID}" \
+    --region us-west-1 \
+    --comment "Bootstrap Cloud9 instance" \
+    --output text
+
+aws ssm list-commands --instance-id ${INSTANCE_ID} --output text
+
+aws ssm list-command-invocations   --command-id 5479ef20-78fa-46de-a1f7-176934b63668 --details   --instance-id ${INSTANCE_ID}   --output text
+
+aws cloudformation update-stack \
+    --stack-name eksctl-ssm-stack-0 \
+    --template-body file://debug/ssm.yaml \
+    --capabilities CAPABILITY_NAMED_IAM
+
+
+# aws ec2 import-key-pair --region ${AWS_REGION} --key-name ${KEY_NAME} --public-key-material fileb://~/.ssh/${OWNER_NAME}-${AWS_PROFILE}-key-pair.pub
+
+create_or_get_sg() {
+    local sg_name=$1
+    local sg_desc=$2
+    local sg_id
+
+    sg_id=$(aws ec2 describe-security-groups --filters Name=group-name,Values=$sg_name --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null)
+
+    if [ "$sg_id" == "None" ]; then
+        sg_id=$(aws ec2 create-security-group --group-name $sg_name --description "$sg_desc" --query 'GroupId' --output text)
+    fi
+
+    echo $sg_id
+}
+
+export SSM_TEST_SG=$(create_or_get_sg "ssm-test-sg" "Group to test Cloud9 webinar SSM Template")
+LATEST_AMI_ID=$(aws ec2 describe-images --owners amazon --filters "Name=name,Values=amzn2-ami-hvm-*-x86_64-gp2" "Name=state,Values=available" --query "Images | sort_by(@, &CreationDate) | [-1].ImageId" --output text)
+
+export INSTANCE_ID=$(aws ec2 run-instances \
+    --image-id ${LATEST_AMI_ID} \
+    --count 1 \
+    --instance-type t2.micro \
+    --key-name ${KEY_NAME} \
+    --iam-instance-profile Name=SSMRole \
+    --security-group-ids $SSM_TEST_SG \
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=SSM-Test-Instance}]' \
+    --query 'Instances[0].InstanceId' --output text)
+
+aws ssm send-command \
+    --document-name "ExampleSSMDocument" \
+    --targets "Key=instanceIds,Values=${INSTANCE_ID}" \
+    --comment "Install curl, eksctl, kubectl, and create EKS clusters" \
+    --timeout-seconds 600 \
+    --max-concurrency "50" \
+    --max-errors "0" 
+
+"iam:DetachRolePolicy",
+"iam:CreateRole",
+"ec2:CreateVpc ",
+"ec2:AllocateAddress ",
+"ec2:CreateInternetGateway",
+
+
+"iam:TagRole"
+"ec2:CreateTags"
+
+ 
+"ec2:DescribeSecurityGroups",
+"ec2:CreateSubnet",
+"ec2:CreateRouteTable ",
+"ec2:DescribeSecurityGroups",
+"ec2:CreateSecurityGroup",
+
+"ec2:AssociateRouteTable",
+"ec2:CreateNatGateway",
+"ec2:AuthorizeSecurityGroupIngress",
